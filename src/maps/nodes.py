@@ -13,7 +13,7 @@ class RoomNode:
         self,
         width: int,
         height: int,
-        density_percent: Literal["low", "active", "high", "ambush"] = "active",
+        density_percent: Literal["low", "active", "high", "ambush"] | str = "active",
         object_density_percent: Literal["sparse", "normal", "cluttered", "fortified"] = "normal",
         room_type: RoomType = RoomType.STANDARD,
         room_objective: RoomObjective = RoomObjective.NONE
@@ -167,4 +167,6 @@ class RoomNode:
     def get_type(self) -> RoomType:
         return self.room_type
 
+    def __repr__(self) -> str:
+        return f"RoomNode(room_type={self.room_type},room_objective={self.room_objective})"
 

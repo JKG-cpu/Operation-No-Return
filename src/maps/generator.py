@@ -3,7 +3,7 @@ import random
 from pprint import pprint
 
 from .nodes import RoomNode
-from .consts import RoomType
+from .consts import RoomObjective, RoomType, AVERAGE_ROOM_AREA
 
 
 __all__ = ["MapGenerator"]
@@ -17,6 +17,15 @@ class MapGenerator:
         self.entries: list[int] = []
         self.objective: int | None = None
         self.decoy_objectives: list[int] = []
+        self.rooms: dict[int, RoomNode] = {}
+
+        # CONSTS
+        self.DENSITY_WEIGHTS_BY_TYPE: dict[RoomType, dict[str, float]] = {
+            RoomType.ENTRY: {"low": 0.7, "active": 0.3},
+            RoomType.DEADEND: {"low": 0.4, "active": 0.4, "high": 0.2},
+            RoomType.JUNCTION: {"active": 0.3, "high": 0.5, "ambush": 0.2},
+            RoomType.STANDARD: {"low": 0.2, "active": 0.6, "high": 0.2},
+        }
 
     # ========== Helpers ==========
     def _is_full_connected(self, graph: dict[int, set[int]]) -> bool:
@@ -193,6 +202,21 @@ class MapGenerator:
 
         return average_degree * 1.5
 
+    def _roll_density(self, room_type: RoomType) -> str:
+        weights = self.DENSITY_WEIGHTS_BY_TYPE[room_type]
+        return random.choices(list(weights.keys()), weights=list(weights.values()), k=1)[0]
+
+    def _estimate_room_count_range(self, size: tuple[int, int]) -> tuple[int, int]:
+        width, height = size
+        total_area = width * height
+
+        estimated_count = total_area // AVERAGE_ROOM_AREA
+
+        min_count = max(3, int(estimated_count * 0.7))
+        max_count = max(min_count + 1, int(estimated_count * 1.3))
+
+        return (min_count, max_count)
+
     # ========== Generators ==========
     def _generate_entries(self, graph: dict[int, set[int]]) -> None:
         """
@@ -348,8 +372,39 @@ class MapGenerator:
 
         return graph
 
+    def _instantiate_rooms(self, room_types: dict[int, RoomType]) -> dict[int, RoomNode]:
+        """
+        Build real RoomNode instances for every room ID, now that each room's
+        type and objective role are already fully decided.
+
+        This runs *after* topology, entries, and objectives are resolved -
+        doing it earlier would mean building rooms before knowing what they're
+        for (e.g. an objective room needs different density settings than a
+        plain standard room, but that isn't known until _tag_rooms has run).
+        """
+        rooms: dict[int, RoomNode] = {}
+
+        for room_id, room_type in room_types.items():
+            objective = RoomObjective.NONE
+
+            if room_id == self.objective:
+                objective = RoomObjective.OBJECTIVE
+
+            elif room_id in self.decoy_objectives:
+                objective = RoomObjective.DECOY
+
+            rooms[room_id] = RoomNode(
+                width=10,
+                height=8,
+                density_percent=self._roll_density(room_type),
+                room_type=room_type,
+                room_objective=objective
+            )
+
+        return rooms
+
     # ========== Callables ==========
-    def generate_new_map(self) -> np.ndarray:
+    def generate_new_map(self, size: tuple[int, int]) -> np.ndarray:
         """
         Generate a full map: topology, entry points, objective/decoys, and
         room type tags.
@@ -363,16 +418,20 @@ class MapGenerator:
         `self.entries`, `self.objective`, `self.decoy_objectives`) for
         inspection.
         """
-        self.current_loaded_map = np.zeros((50, 50))
+        self.current_loaded_map = np.zeros(size)
+        min_count, max_count = self._estimate_room_count_range(size)
+        room_count = random.randint(min_count, max_count)
 
-        room_count = 10
         self.max_entries = min(4, max(1, room_count // 4))
         self.room_graph = self._generate_topology(room_count)
         self._add_extra_connects(self.room_graph)
         self._generate_entries(self.room_graph)
         self._generate_objectives(self.room_graph)
 
+        # Instantiate rooms
         room_types = self._tag_rooms(self.room_graph)
+        self.rooms = self._instantiate_rooms(room_types)
+        
         room_min_distance = self._get_min_distance_from_entries(self.room_graph)
 
         if not self._is_full_connected(self.room_graph):

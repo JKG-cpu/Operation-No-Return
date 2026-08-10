@@ -1,6 +1,6 @@
 from enum import Enum, auto
 
-__all__ = ["DirectionError", "InvalidRoomSizeError", "RoomType", "RoomObjective", "Directions", "TILES", "ENEMY_DENSITY_PERCENT", "OBJECT_DENSITY_PERCENT"]
+__all__ = ["DirectionError", "InvalidRoomSizeError", "RoomType", "RoomObjective", "Directions", "TILES", "ENEMY_DENSITY_PERCENT", "OBJECT_DENSITY_PERCENT", "AVERAGE_ROOM_AREA"]
 
 
 class DirectionError(Exception):
@@ -69,3 +69,5 @@ OBJECT_DENSITY_PERCENT: dict[str, float] = {
     "cluttered": 0.1,
     "fortified": 0.15,
 }
+
+AVERAGE_ROOM_AREA = 12 * 10
