@@ -3,7 +3,18 @@ import random
 from pprint import pprint
 
 from .nodes import RoomNode
-from .consts import EnemyDensityPercent, ObjectDensityPercent, RoomObjective, RoomType, AVERAGE_ROOM_AREA
+from .consts import (
+    Directions,
+    DirectionError,
+    DIRECTION_OFFSETS,
+    EnemyDensityPercent,
+    ObjectDensityPercent,
+    RoomObjective,
+    RoomType,
+    ROOM_WIDTH,
+    ROOM_HEIGHT,
+    AVERAGE_ROOM_AREA,
+)
 
 
 __all__ = ["MapGenerator"]
@@ -19,11 +30,28 @@ class MapGenerator:
         self.decoy_objectives: list[RoomNode] = []
 
         # CONSTS
-        self.DENSITY_WEIGHTS_BY_TYPE: dict[RoomType, dict[EnemyDensityPercent, float]] = {
-            RoomType.ENTRY: {EnemyDensityPercent.LOW: 0.7, EnemyDensityPercent.ACTIVE: 0.3},
-            RoomType.DEADEND: {EnemyDensityPercent.LOW: 0.4, EnemyDensityPercent.ACTIVE: 0.4, EnemyDensityPercent.HIGH: 0.2},
-            RoomType.JUNCTION: {EnemyDensityPercent.ACTIVE: 0.3, EnemyDensityPercent.HIGH: 0.5, EnemyDensityPercent.AMBUSH: 0.2},
-            RoomType.STANDARD: {EnemyDensityPercent.LOW: 0.2, EnemyDensityPercent.ACTIVE: 0.6, EnemyDensityPercent.HIGH: 0.2},
+        self.DENSITY_WEIGHTS_BY_TYPE: dict[
+            RoomType, dict[EnemyDensityPercent, float]
+        ] = {
+            RoomType.ENTRY: {
+                EnemyDensityPercent.LOW: 0.7,
+                EnemyDensityPercent.ACTIVE: 0.3,
+            },
+            RoomType.DEADEND: {
+                EnemyDensityPercent.LOW: 0.4,
+                EnemyDensityPercent.ACTIVE: 0.4,
+                EnemyDensityPercent.HIGH: 0.2,
+            },
+            RoomType.JUNCTION: {
+                EnemyDensityPercent.ACTIVE: 0.3,
+                EnemyDensityPercent.HIGH: 0.5,
+                EnemyDensityPercent.AMBUSH: 0.2,
+            },
+            RoomType.STANDARD: {
+                EnemyDensityPercent.LOW: 0.2,
+                EnemyDensityPercent.ACTIVE: 0.6,
+                EnemyDensityPercent.HIGH: 0.2,
+            },
         }
 
     # ========== Helpers ==========
@@ -55,7 +83,9 @@ class MapGenerator:
 
         return len(visited) == len(graph)
 
-    def _get_room_degrees(self, graph: dict[RoomNode, set[RoomNode]]) -> dict[RoomNode, int]:
+    def _get_room_degrees(
+        self, graph: dict[RoomNode, set[RoomNode]]
+    ) -> dict[RoomNode, int]:
         """
         Count how many direct connections each room has.
 
@@ -70,11 +100,11 @@ class MapGenerator:
         """
         rooms = list(graph.keys())
 
-        return {
-            r: len(graph[r]) for r in rooms
-        }
+        return {r: len(graph[r]) for r in rooms}
 
-    def _is_room_connected_to_entry(self, graph: dict[RoomNode, set[RoomNode]], room: RoomNode) -> bool:
+    def _is_room_connected_to_entry(
+        self, graph: dict[RoomNode, set[RoomNode]], room: RoomNode
+    ) -> bool:
         """
         Check whether a given room is directly connected to any room already
         marked as an entry point.
@@ -96,7 +126,9 @@ class MapGenerator:
 
         return False
 
-    def _get_distance_from_room(self, graph: dict[RoomNode, set[RoomNode]], start: RoomNode) -> dict[RoomNode, int]:
+    def _get_distance_from_room(
+        self, graph: dict[RoomNode, set[RoomNode]], start: RoomNode
+    ) -> dict[RoomNode, int]:
         """
         Measure how many "hops" away every other room is from a given starting room.
 
@@ -127,7 +159,9 @@ class MapGenerator:
 
         return distances
 
-    def _get_min_distance_from_entries(self, graph: dict[RoomNode, set[RoomNode]]) -> dict[RoomNode, int]:
+    def _get_min_distance_from_entries(
+        self, graph: dict[RoomNode, set[RoomNode]]
+    ) -> dict[RoomNode, int]:
         """
         Find, for every room, how far it is from the *nearest* entry point -
         not the farthest, and not some average.
@@ -159,7 +193,9 @@ class MapGenerator:
 
         return room_min_distance
 
-    def _get_farthest_rooms(self, room_min_distance: dict[RoomNode, int]) -> list[RoomNode]:
+    def _get_farthest_rooms(
+        self, room_min_distance: dict[RoomNode, int]
+    ) -> list[RoomNode]:
         """
         Find every room tied for the largest "distance from nearest entry"
         value - not just the first one found.
@@ -176,8 +212,7 @@ class MapGenerator:
         max_distance = max(room_min_distance.values())
 
         return [
-            room for room, dist in room_min_distance.items()
-            if dist == max_distance
+            room for room, dist in room_min_distance.items() if dist == max_distance
         ]
 
     def _get_junction_threshold(self, degrees: dict[RoomNode, int]) -> float:
@@ -203,7 +238,9 @@ class MapGenerator:
 
     def _roll_density(self, room_type: RoomType) -> EnemyDensityPercent:
         weights = self.DENSITY_WEIGHTS_BY_TYPE[room_type]
-        return random.choices(list(weights.keys()), weights=list(weights.values()), k=1)[0]
+        return random.choices(
+            list(weights.keys()), weights=list(weights.values()), k=1
+        )[0]
 
     def _estimate_room_count_range(self, size: tuple[int, int]) -> tuple[int, int]:
         width, height = size
@@ -215,6 +252,16 @@ class MapGenerator:
         max_count = max(min_count + 1, int(estimated_count * 1.3))
 
         return (min_count, max_count)
+
+    def _get_direction_between(self, pos_a: tuple[int, int], pos_b: tuple[int, int]) -> Directions:
+        dx = pos_b[0] - pos_a[0]
+        dy = pos_b[1] - pos_a[1]
+
+        for direction, offset in DIRECTION_OFFSETS.items():
+            if offset == (dx, dy):
+                return direction
+
+        raise DirectionError()
 
     # ========== Generators ==========
     def _generate_entries(self, graph: dict[RoomNode, set[RoomNode]]) -> None:
@@ -242,7 +289,7 @@ class MapGenerator:
                 self.entries.append(room)
 
         if len(self.entries) == 0:
-            print("No Entries Generated") # Handle with Exception later
+            print("No Entries Generated")  # Handle with Exception later
 
     def _generate_objectives(self, graph: dict[RoomNode, set[RoomNode]]) -> None:
         """
@@ -272,7 +319,9 @@ class MapGenerator:
             farthest_rooms.remove(self.objective)
             self.decoy_objectives = farthest_rooms
 
-    def _tag_rooms(self, graph: dict[RoomNode, set[RoomNode]]) -> dict[RoomNode, RoomType]:
+    def _tag_rooms(
+        self, graph: dict[RoomNode, set[RoomNode]]
+    ) -> dict[RoomNode, RoomType]:
         """
         Assign a `RoomType` to every room in the graph.
 
@@ -306,7 +355,9 @@ class MapGenerator:
 
         return room_types
 
-    def _add_extra_connects(self, graph: dict[RoomNode, set[RoomNode]], extra_ratio: float = 0.3) -> None:
+    def _add_extra_connects(
+        self, graph: dict[RoomNode, set[RoomNode]], occupied: dict[tuple[int, int], RoomNode], extra_ratio: float = 0.3
+    ) -> None:
         """
         Add extra random connections on top of the base topology, so the
         map has loops (multiple routes between rooms) instead of being a
@@ -331,16 +382,37 @@ class MapGenerator:
         while added < extra_count and attempts < max_attempts:
             attempts += 1
 
-            room_a, room_b = random.sample(list(graph.keys()), 2)
+            # room_a, room_b = random.sample(list(graph.keys()), 2)
+            room_a = random.choice(list(graph.keys()))
 
-            if room_b in graph[room_a]:
+            grid_position = room_a.get_grid_position()
+
+            if grid_position is None:
+                print("Grid Position Empty???")
+                exit(1)
+
+            tx, ty = grid_position
+
+            occupied_neighbors = [
+                (tx + dx, ty + dy) for dx, dy in DIRECTION_OFFSETS.values()
+                if (tx + dx, ty + dy) in occupied
+            ]
+
+            candidates = [
+                occupied[pos] for pos in occupied_neighbors
+                if occupied[pos] not in graph[room_a]
+            ]
+
+            if not candidates:
                 continue
+
+            room_b = random.choice(candidates)
 
             graph[room_a].add(room_b)
             graph[room_b].add(room_a)
             added += 1
 
-    def _generate_topology(self, room_count: int) -> dict[RoomNode, set[RoomNode]]:
+    def _generate_topology(self, room_count: int) -> tuple[dict[RoomNode, set[RoomNode]], dict[tuple[int, int], RoomNode]]:
         """
         Build the base room-connection graph, guaranteeing every room is
         reachable from every other room (no islands).
@@ -357,20 +429,53 @@ class MapGenerator:
         Returns a fresh room graph as a dict mapping each room ID to the
         set of room IDs it connects to.
         """
-        all_rooms = [RoomNode(width=10, height=8) for _ in range(room_count)]
-        graph: dict[RoomNode, set[RoomNode]] = {room: set() for room in all_rooms}
+        first_room = RoomNode(width=ROOM_WIDTH, height=ROOM_HEIGHT)
+        first_room.set_grid_position(0, 0)
 
-        connected = [all_rooms[0]]
-        remaining = all_rooms[1:]
-        random.shuffle(remaining)
+        graph: dict[RoomNode, set[RoomNode]] = {first_room: set()}
+        occupied: dict[tuple[int, int], RoomNode] = {(0, 0): first_room}
+        placed = [first_room]
 
-        for room in remaining:
-            target = random.choice(connected)
-            graph[room].add(target)
-            graph[target].add(room)
-            connected.append(room)
+        max_attempts_per_room = 20
 
-        return graph
+        for _ in range(room_count - 1):
+            target = None
+            new_pos = None
+
+            for _ in range(max_attempts_per_room):
+                candidate = random.choice(placed)
+                grid_position = candidate.get_grid_position()
+
+                if grid_position is None:
+                    print("Grid Position is None???")
+                    exit(1)
+
+                tx, ty = grid_position
+
+                free_neighbors = [
+                    (tx + dx, ty + dy) for dx, dy in DIRECTION_OFFSETS.values()
+                    if (tx + dx, ty + dy) not in occupied
+                ]
+
+                if free_neighbors:
+                    target = candidate
+                    new_pos = random.choice(free_neighbors)
+                    break
+
+            if target is None or new_pos is None:
+                print(f"Could not place all rooms - stopped at {len(placed)}")
+                break
+
+            new_room = RoomNode(width=ROOM_WIDTH, height=ROOM_HEIGHT)
+            new_room.set_grid_position(*new_pos)
+
+            graph[new_room] = {target}
+            graph[target].add(new_room)
+
+            occupied[new_pos] = new_room
+            placed.append(new_room)
+
+        return graph, occupied
 
     def finalize_rooms(self, room_types: dict[RoomNode, RoomType]) -> None:
         """
@@ -389,7 +494,7 @@ class MapGenerator:
             room.set_objective(objective)
             room.build(
                 density_percent=self._roll_density(room_type),
-                object_density_percent=ObjectDensityPercent.NORMAL
+                object_density_percent=ObjectDensityPercent.NORMAL,
             )
 
     # ========== Callables ==========
@@ -412,15 +517,15 @@ class MapGenerator:
         room_count = random.randint(min_count, max_count)
 
         self.max_entries = min(4, max(1, room_count // 4))
-        self.room_graph = self._generate_topology(room_count)
-        self._add_extra_connects(self.room_graph)
+        self.room_graph, occupied = self._generate_topology(room_count)
+        self._add_extra_connects(self.room_graph, occupied)
         self._generate_entries(self.room_graph)
         self._generate_objectives(self.room_graph)
 
         # Instantiate rooms
         room_types = self._tag_rooms(self.room_graph)
         self.finalize_rooms(room_types)
- 
+
         room_min_distance = self._get_min_distance_from_entries(self.room_graph)
 
         if not self._is_full_connected(self.room_graph):
@@ -429,16 +534,19 @@ class MapGenerator:
         for room_id, connections in self.room_graph.items():
             print()
             print(f"Room {room_id} connects to: {connections}")
-            print(f"Room {room_id} is {room_min_distance[room_id]} steps from the nearest entry")
+            print(
+                f"Room {room_id} is {room_min_distance[room_id]} steps from the nearest entry"
+            )
             if room_id in self.entries:
                 print(f"Room {room_id} is also an entry point")
 
         print()
         print(f"Current room objective: {self.objective}")
-        print(f"Decoy Objectives: {self.decoy_objectives if self.decoy_objectives else "None"}")
+        print(
+            f"Decoy Objectives: {self.decoy_objectives if self.decoy_objectives else 'None'}"
+        )
 
         print("Room Types:")
         pprint(room_types)
 
         return self.current_loaded_map
-

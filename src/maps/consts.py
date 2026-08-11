@@ -1,6 +1,19 @@
 from enum import Enum, auto
 
-__all__ = ["DirectionError", "InvalidRoomSizeError", "RoomType", "RoomObjective", "Directions", "TILES", "EnemyDensityPercent", "ObjectDensityPercent", "AVERAGE_ROOM_AREA"]
+__all__ = [
+    "DirectionError",
+    "InvalidRoomSizeError",
+    "RoomType",
+    "RoomObjective",
+    "Directions",
+    "DIRECTION_OFFSETS",
+    "TILES",
+    "EnemyDensityPercent",
+    "ObjectDensityPercent",
+    "ROOM_WIDTH",
+    "ROOM_HEIGHT",
+    "AVERAGE_ROOM_AREA",
+]
 
 
 class DirectionError(Exception):
@@ -29,9 +42,9 @@ class InvalidRoomSizeError(Exception):
 
 class RoomType(Enum):
     ENTRY = auto()
-    JUNCTION = auto() # Alot of rooms attached
-    DEADEND = auto() # Only one connection / decoy
-    STANDARD = auto() # Normal room, maybe 1-2 rooms attached
+    JUNCTION = auto()  # Alot of rooms attached
+    DEADEND = auto()  # Only one connection / decoy
+    STANDARD = auto()  # Normal room, maybe 1-2 rooms attached
 
 
 class RoomObjective(Enum):
@@ -45,6 +58,14 @@ class Directions(Enum):
     SOUTH = auto()
     EAST = auto()
     WEST = auto()
+
+
+DIRECTION_OFFSETS: dict[Directions, tuple[int, int]] = {
+    Directions.NORTH: (0, -1),
+    Directions.SOUTH: (0, 1),
+    Directions.EAST: (1, 0),
+    Directions.WEST: (-1, 0),
+}
 
 
 class EnemyDensityPercent(Enum):
@@ -70,4 +91,6 @@ TILES: dict[str, int] = {
     "object": 5,
 }
 
-AVERAGE_ROOM_AREA = 12 * 10
+ROOM_WIDTH = 12
+ROOM_HEIGHT = 10
+AVERAGE_ROOM_AREA = ROOM_WIDTH * ROOM_HEIGHT

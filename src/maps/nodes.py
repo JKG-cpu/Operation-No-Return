@@ -1,7 +1,16 @@
 import numpy as np
 import random
 
-from .consts import DirectionError, InvalidRoomSizeError, Directions, RoomType, RoomObjective, TILES, EnemyDensityPercent, ObjectDensityPercent
+from .consts import (
+    DirectionError,
+    InvalidRoomSizeError,
+    Directions,
+    RoomType,
+    RoomObjective,
+    TILES,
+    EnemyDensityPercent,
+    ObjectDensityPercent,
+)
 from .game_objects import GameObject, Table, Shelf
 
 __all__ = ["RoomNode"]
@@ -13,7 +22,7 @@ class RoomNode:
         width: int,
         height: int,
         room_type: RoomType = RoomType.STANDARD,
-        room_objective: RoomObjective = RoomObjective.NONE
+        room_objective: RoomObjective = RoomObjective.NONE,
     ) -> None:
         self.width = width
         self.height = height
@@ -23,6 +32,7 @@ class RoomNode:
         self.map = np.zeros((self.height, self.width))
         self.doors: list[tuple[int, int, Directions]] = []
         self.objects: list[GameObject] = []
+        self.grid_position: tuple[int, int] | None = None
 
         # Construct Border
         self.create_border()
@@ -62,18 +72,20 @@ class RoomNode:
 
     def _place_object(self, obj: GameObject, x: int, y: int) -> bool:
         schematic = obj.get_schematic()
-        h, w = schematic.shape 
-        
+        h, w = schematic.shape
+
         if y + h > self.map.shape[0] or x + w > self.map.shape[1]:
             return False
 
-        region = self.map[y:y+h, x:x+w]
+        region = self.map[y : y + h, x : x + w]
 
         if not np.all(region == TILES["empty"]):
             return False
 
-        self.map[y:y+h, x:x+w] = np.where(schematic == 1, TILES["object"], region)
-        
+        self.map[y : y + h, x : x + w] = np.where(
+            schematic == 1, TILES["object"], region
+        )
+
         return True
 
     # ========== Setup Map ==========
@@ -116,8 +128,9 @@ class RoomNode:
 
         if enemy_count < self.enemy_count:
             raise InvalidRoomSizeError(
-                self.width, self.height,
-                f"Not enough empty tiles for enemies (wanted {self.enemy_count}, had {len(empty_spots)})"
+                self.width,
+                self.height,
+                f"Not enough empty tiles for enemies (wanted {self.enemy_count}, had {len(empty_spots)})",
             )
 
         random_choices = np.random.choice(
@@ -130,7 +143,11 @@ class RoomNode:
         self.map[rows, cols] = TILES["enemy"]
 
     # ========== Callables ==========
-    def build(self, density_percent: EnemyDensityPercent, object_density_percent: ObjectDensityPercent) -> None:
+    def build(
+        self,
+        density_percent: EnemyDensityPercent,
+        object_density_percent: ObjectDensityPercent,
+    ) -> None:
         self.enemy_count = self._get_enemy_count(density_percent)
         self.object_count = self._get_object_count(object_density_percent)
 
@@ -162,6 +179,9 @@ class RoomNode:
     def set_type(self, room_type: RoomType) -> None:
         self.room_type = room_type
 
+    def set_grid_position(self, grid_x: int, grid_y: int) -> None:
+        self.grid_position = (grid_x, grid_y)
+
     def get_map(self) -> np.ndarray:
         return self.map
 
@@ -171,6 +191,10 @@ class RoomNode:
     def get_type(self) -> RoomType:
         return self.room_type
 
-    def __repr__(self) -> str:
-        return f"RoomNode(room_type={self.room_type},room_objective={self.room_objective})"
+    def get_grid_position(self) -> tuple[int, int] | None:
+        return self.grid_position
 
+    def __repr__(self) -> str:
+        return (
+            f"RoomNode(room_type={self.room_type},room_objective={self.room_objective})"
+        )
