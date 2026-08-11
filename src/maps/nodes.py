@@ -1,8 +1,7 @@
 import numpy as np
 import random
-from typing import Literal
 
-from .consts import DirectionError, InvalidRoomSizeError, Directions, RoomType, RoomObjective, TILES, ENEMY_DENSITY_PERCENT, OBJECT_DENSITY_PERCENT
+from .consts import DirectionError, InvalidRoomSizeError, Directions, RoomType, RoomObjective, TILES, EnemyDensityPercent, ObjectDensityPercent
 from .game_objects import GameObject, Table, Shelf
 
 __all__ = ["RoomNode"]
@@ -13,15 +12,11 @@ class RoomNode:
         self,
         width: int,
         height: int,
-        density_percent: Literal["low", "active", "high", "ambush"] | str = "active",
-        object_density_percent: Literal["sparse", "normal", "cluttered", "fortified"] = "normal",
         room_type: RoomType = RoomType.STANDARD,
         room_objective: RoomObjective = RoomObjective.NONE
     ) -> None:
         self.width = width
         self.height = height
-        self.enemy_count = self._get_enemy_count(ENEMY_DENSITY_PERCENT[density_percent])
-        self.object_count = self._get_object_count(OBJECT_DENSITY_PERCENT[object_density_percent])
         self.room_type = room_type
         self.room_objective = room_objective
 
@@ -29,7 +24,8 @@ class RoomNode:
         self.doors: list[tuple[int, int, Directions]] = []
         self.objects: list[GameObject] = []
 
-        self._setup_map()
+        # Construct Border
+        self.create_border()
 
     # ========== Helper Methods ==========
     def _get_door_direction(self, x: int, y: int) -> Directions:
@@ -47,13 +43,13 @@ class RoomNode:
 
         raise DirectionError()
 
-    def _get_object_count(self, density_percent: float) -> int:
+    def _get_object_count(self, density_percent: ObjectDensityPercent) -> int:
         walkable_tiles = (self.width - 2) * (self.height - 2)
-        return max(1, int(walkable_tiles * density_percent))
+        return max(1, int(walkable_tiles * density_percent.value))
 
-    def _get_enemy_count(self, density_percent: float) -> int:
+    def _get_enemy_count(self, density_percent: EnemyDensityPercent) -> int:
         walkable_tiles = (self.width - 2) * (self.height - 2)
-        return max(1, int(walkable_tiles / 2 * density_percent))
+        return max(1, int(walkable_tiles / 2 * density_percent.value))
 
     def _check_empty(self) -> bool:
         return bool(np.any(self.map == 0))
@@ -133,12 +129,14 @@ class RoomNode:
         cols = random_coords[:, 1]
         self.map[rows, cols] = TILES["enemy"]
 
-    def _setup_map(self) -> None:
-        self.create_border()
+    # ========== Callables ==========
+    def build(self, density_percent: EnemyDensityPercent, object_density_percent: ObjectDensityPercent) -> None:
+        self.enemy_count = self._get_enemy_count(density_percent)
+        self.object_count = self._get_object_count(object_density_percent)
+
         self.generate_objects(self._get_empty())
         self.generate_enemies(self._get_empty())
 
-    # ========== Callables ==========
     def add_door(self, x: int, y: int) -> bool:
         # Check if x, y is out of bounds
         if x >= self.width or y >= self.height or x < 0 or y < 0:
@@ -157,6 +155,12 @@ class RoomNode:
         self.doors.append((x, y, self._get_door_direction(x, y)))
 
         return True  # Door Created
+
+    def set_objective(self, room_objective: RoomObjective) -> None:
+        self.room_objective = room_objective
+
+    def set_type(self, room_type: RoomType) -> None:
+        self.room_type = room_type
 
     def get_map(self) -> np.ndarray:
         return self.map

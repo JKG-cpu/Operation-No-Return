@@ -3,7 +3,7 @@ import random
 from pprint import pprint
 
 from .nodes import RoomNode
-from .consts import RoomObjective, RoomType, AVERAGE_ROOM_AREA
+from .consts import EnemyDensityPercent, ObjectDensityPercent, RoomObjective, RoomType, AVERAGE_ROOM_AREA
 
 
 __all__ = ["MapGenerator"]
@@ -12,23 +12,22 @@ __all__ = ["MapGenerator"]
 class MapGenerator:
     def __init__(self) -> None:
         self.current_loaded_map: np.ndarray = np.array([])
-        self.room_graph: dict[int, set[int]] = {}
+        self.room_graph: dict[RoomNode, set[RoomNode]] = {}
 
-        self.entries: list[int] = []
-        self.objective: int | None = None
-        self.decoy_objectives: list[int] = []
-        self.rooms: dict[int, RoomNode] = {}
+        self.entries: list[RoomNode] = []
+        self.objective: RoomNode | None = None
+        self.decoy_objectives: list[RoomNode] = []
 
         # CONSTS
-        self.DENSITY_WEIGHTS_BY_TYPE: dict[RoomType, dict[str, float]] = {
-            RoomType.ENTRY: {"low": 0.7, "active": 0.3},
-            RoomType.DEADEND: {"low": 0.4, "active": 0.4, "high": 0.2},
-            RoomType.JUNCTION: {"active": 0.3, "high": 0.5, "ambush": 0.2},
-            RoomType.STANDARD: {"low": 0.2, "active": 0.6, "high": 0.2},
+        self.DENSITY_WEIGHTS_BY_TYPE: dict[RoomType, dict[EnemyDensityPercent, float]] = {
+            RoomType.ENTRY: {EnemyDensityPercent.LOW: 0.7, EnemyDensityPercent.ACTIVE: 0.3},
+            RoomType.DEADEND: {EnemyDensityPercent.LOW: 0.4, EnemyDensityPercent.ACTIVE: 0.4, EnemyDensityPercent.HIGH: 0.2},
+            RoomType.JUNCTION: {EnemyDensityPercent.ACTIVE: 0.3, EnemyDensityPercent.HIGH: 0.5, EnemyDensityPercent.AMBUSH: 0.2},
+            RoomType.STANDARD: {EnemyDensityPercent.LOW: 0.2, EnemyDensityPercent.ACTIVE: 0.6, EnemyDensityPercent.HIGH: 0.2},
         }
 
     # ========== Helpers ==========
-    def _is_full_connected(self, graph: dict[int, set[int]]) -> bool:
+    def _is_full_connected(self, graph: dict[RoomNode, set[RoomNode]]) -> bool:
         """
         Check whether every room in the graph is reachable from every other
         room - i.e. there are no isolated "islands."
@@ -56,7 +55,7 @@ class MapGenerator:
 
         return len(visited) == len(graph)
 
-    def _get_room_degrees(self, graph: dict[int, set[int]]) -> dict[int, int]:
+    def _get_room_degrees(self, graph: dict[RoomNode, set[RoomNode]]) -> dict[RoomNode, int]:
         """
         Count how many direct connections each room has.
 
@@ -75,7 +74,7 @@ class MapGenerator:
             r: len(graph[r]) for r in rooms
         }
 
-    def _is_room_connected_to_entry(self, graph: dict[int, set[int]], room: int) -> bool:
+    def _is_room_connected_to_entry(self, graph: dict[RoomNode, set[RoomNode]], room: RoomNode) -> bool:
         """
         Check whether a given room is directly connected to any room already
         marked as an entry point.
@@ -97,7 +96,7 @@ class MapGenerator:
 
         return False
 
-    def _get_distance_from_room(self, graph: dict[int, set[int]], start: int) -> dict[int, int]:
+    def _get_distance_from_room(self, graph: dict[RoomNode, set[RoomNode]], start: RoomNode) -> dict[RoomNode, int]:
         """
         Measure how many "hops" away every other room is from a given starting room.
 
@@ -128,7 +127,7 @@ class MapGenerator:
 
         return distances
 
-    def _get_min_distance_from_entries(self, graph: dict[int, set[int]]) -> dict[int, int]:
+    def _get_min_distance_from_entries(self, graph: dict[RoomNode, set[RoomNode]]) -> dict[RoomNode, int]:
         """
         Find, for every room, how far it is from the *nearest* entry point -
         not the farthest, and not some average.
@@ -149,7 +148,7 @@ class MapGenerator:
         entry, e.g. {0: 0, 1: 0, 2: 3, 3: 1}. Entry rooms themselves always
         map to 0.
         """
-        room_min_distance: dict[int, int] = {}
+        room_min_distance: dict[RoomNode, int] = {}
 
         for entry in self.entries:
             distances = self._get_distance_from_room(graph, entry)
@@ -160,7 +159,7 @@ class MapGenerator:
 
         return room_min_distance
 
-    def _get_farthest_rooms(self, room_min_distance: dict[int, int]) -> list[int]:
+    def _get_farthest_rooms(self, room_min_distance: dict[RoomNode, int]) -> list[RoomNode]:
         """
         Find every room tied for the largest "distance from nearest entry"
         value - not just the first one found.
@@ -181,7 +180,7 @@ class MapGenerator:
             if dist == max_distance
         ]
 
-    def _get_junction_threshold(self, degrees: dict[int, int]) -> float:
+    def _get_junction_threshold(self, degrees: dict[RoomNode, int]) -> float:
         """
         Calculate how many connections a room needs to count as a "junction,"
         scaled to this specific map rather than a fixed number.
@@ -202,7 +201,7 @@ class MapGenerator:
 
         return average_degree * 1.5
 
-    def _roll_density(self, room_type: RoomType) -> str:
+    def _roll_density(self, room_type: RoomType) -> EnemyDensityPercent:
         weights = self.DENSITY_WEIGHTS_BY_TYPE[room_type]
         return random.choices(list(weights.keys()), weights=list(weights.values()), k=1)[0]
 
@@ -218,7 +217,7 @@ class MapGenerator:
         return (min_count, max_count)
 
     # ========== Generators ==========
-    def _generate_entries(self, graph: dict[int, set[int]]) -> None:
+    def _generate_entries(self, graph: dict[RoomNode, set[RoomNode]]) -> None:
         """
         Choose up to `self.max_entries` rooms to act as entry points.
 
@@ -245,7 +244,7 @@ class MapGenerator:
         if len(self.entries) == 0:
             print("No Entries Generated") # Handle with Exception later
 
-    def _generate_objectives(self, graph: dict[int, set[int]]) -> None:
+    def _generate_objectives(self, graph: dict[RoomNode, set[RoomNode]]) -> None:
         """
         Choose the true objective room, plus any decoy rooms.
 
@@ -273,7 +272,7 @@ class MapGenerator:
             farthest_rooms.remove(self.objective)
             self.decoy_objectives = farthest_rooms
 
-    def _tag_rooms(self, graph: dict[int, set[int]]) -> dict[int, RoomType]:
+    def _tag_rooms(self, graph: dict[RoomNode, set[RoomNode]]) -> dict[RoomNode, RoomType]:
         """
         Assign a `RoomType` to every room in the graph.
 
@@ -289,7 +288,7 @@ class MapGenerator:
         Returns a dict mapping each room ID to its assigned RoomType.
         """
         room_degrees = self._get_room_degrees(graph)
-        room_types: dict[int, RoomType] = {}
+        room_types: dict[RoomNode, RoomType] = {}
         junction_threshold = self._get_junction_threshold(room_degrees)
 
         for room, degree in room_degrees.items():
@@ -307,7 +306,7 @@ class MapGenerator:
 
         return room_types
 
-    def _add_extra_connects(self, graph: dict[int, set[int]], extra_ratio: float = 0.3) -> None:
+    def _add_extra_connects(self, graph: dict[RoomNode, set[RoomNode]], extra_ratio: float = 0.3) -> None:
         """
         Add extra random connections on top of the base topology, so the
         map has loops (multiple routes between rooms) instead of being a
@@ -332,7 +331,7 @@ class MapGenerator:
         while added < extra_count and attempts < max_attempts:
             attempts += 1
 
-            room_a, room_b = random.sample(range(room_count), 2)
+            room_a, room_b = random.sample(list(graph.keys()), 2)
 
             if room_b in graph[room_a]:
                 continue
@@ -341,7 +340,7 @@ class MapGenerator:
             graph[room_b].add(room_a)
             added += 1
 
-    def _generate_topology(self, room_count: int) -> dict[int, set[int]]:
+    def _generate_topology(self, room_count: int) -> dict[RoomNode, set[RoomNode]]:
         """
         Build the base room-connection graph, guaranteeing every room is
         reachable from every other room (no islands).
@@ -358,10 +357,11 @@ class MapGenerator:
         Returns a fresh room graph as a dict mapping each room ID to the
         set of room IDs it connects to.
         """
-        graph: dict[int, set[int]] = {i: set() for i in range(room_count)}
+        all_rooms = [RoomNode(width=10, height=8) for _ in range(room_count)]
+        graph: dict[RoomNode, set[RoomNode]] = {room: set() for room in all_rooms}
 
-        connected = [0] # Room 0 starts connection
-        remaining = list(range(1, room_count))
+        connected = [all_rooms[0]]
+        remaining = all_rooms[1:]
         random.shuffle(remaining)
 
         for room in remaining:
@@ -372,36 +372,25 @@ class MapGenerator:
 
         return graph
 
-    def _instantiate_rooms(self, room_types: dict[int, RoomType]) -> dict[int, RoomNode]:
+    def finalize_rooms(self, room_types: dict[RoomNode, RoomType]) -> None:
         """
-        Build real RoomNode instances for every room ID, now that each room's
-        type and objective role are already fully decided.
-
-        This runs *after* topology, entries, and objectives are resolved -
-        doing it earlier would mean building rooms before knowing what they're
-        for (e.g. an objective room needs different density settings than a
-        plain standard room, but that isn't known until _tag_rooms has run).
+        Finalize all the rooms that are currently in the loaded map
         """
-        rooms: dict[int, RoomNode] = {}
-
-        for room_id, room_type in room_types.items():
+        for room, room_type in room_types.items():
             objective = RoomObjective.NONE
 
-            if room_id == self.objective:
+            if room is self.objective:
                 objective = RoomObjective.OBJECTIVE
 
-            elif room_id in self.decoy_objectives:
+            elif room in self.decoy_objectives:
                 objective = RoomObjective.DECOY
 
-            rooms[room_id] = RoomNode(
-                width=10,
-                height=8,
+            room.set_type(room_type)
+            room.set_objective(objective)
+            room.build(
                 density_percent=self._roll_density(room_type),
-                room_type=room_type,
-                room_objective=objective
+                object_density_percent=ObjectDensityPercent.NORMAL
             )
-
-        return rooms
 
     # ========== Callables ==========
     def generate_new_map(self, size: tuple[int, int]) -> np.ndarray:
@@ -430,8 +419,8 @@ class MapGenerator:
 
         # Instantiate rooms
         room_types = self._tag_rooms(self.room_graph)
-        self.rooms = self._instantiate_rooms(room_types)
-        
+        self.finalize_rooms(room_types)
+ 
         room_min_distance = self._get_min_distance_from_entries(self.room_graph)
 
         if not self._is_full_connected(self.room_graph):
@@ -452,5 +441,4 @@ class MapGenerator:
         pprint(room_types)
 
         return self.current_loaded_map
-
 
