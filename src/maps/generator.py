@@ -1,6 +1,5 @@
 import numpy as np
 import random
-from pprint import pprint
 
 from .nodes import RoomNode
 from .consts import (
@@ -263,6 +262,57 @@ class MapGenerator:
 
         raise DirectionError()
 
+    def _set_tile_coordinates(self, graph: dict[RoomNode, set[RoomNode]]) -> tuple[int, int]:
+        positions = [room.get_grid_position() for room in graph.keys()]
+        min_x = min(0, min(x for x, _ in positions))
+        min_y = min(0, min(y for _, y in positions))
+
+        max_x, max_y = 0, 0
+
+        for room in graph.keys():
+            grid_x, grid_y = room.get_grid_position()
+            shifted_x, shifted_y = grid_x - min_x, grid_y - min_y
+
+            if max_x < shifted_x: max_x = shifted_x
+            if max_y < shifted_y: max_y = shifted_y
+
+            room_w, room_h = room.get_size()
+            tile_x, tile_y = shifted_x * room_w, shifted_y * room_h
+
+            room.set_tile_position(tile_x, tile_y)
+
+        return (
+            (max_x + 1) * ROOM_WIDTH,
+            (max_y + 1) * ROOM_HEIGHT
+        )
+
+    def _place_door(self, room: RoomNode, direction: Directions) -> bool:
+        room_w, room_h = room.get_size()
+        max_attempts = 10
+
+        for _ in range(max_attempts):
+            if direction == Directions.EAST:
+                x = room_w - 1
+                y = random.randint(1, room_h - 2)
+
+            elif direction == Directions.WEST:
+                x = 0
+                y = random.randint(1, room_h - 2)
+
+            elif direction == Directions.NORTH:
+                x = random.randint(1, room_w - 2)
+                y = 0
+
+            elif direction == Directions.SOUTH:
+                x = random.randint(1, room_w - 2)
+                y = room_h - 1
+
+            if room.add_door(x, y):
+                return True
+
+        print("Couldn't place a door...")
+        return False
+
     # ========== Generators ==========
     def _generate_entries(self, graph: dict[RoomNode, set[RoomNode]]) -> None:
         """
@@ -477,6 +527,57 @@ class MapGenerator:
 
         return graph, occupied
 
+    def _stamp_maps(self, graph: dict[RoomNode, set[RoomNode]]) -> None:
+        for room in graph.keys():
+            tile_x, tile_y = room.get_tile_position()
+            room_w, room_h = room.get_size()
+
+            self.current_loaded_map[tile_y:tile_y+room_h, tile_x:tile_x+room_w] = room.get_map()
+
+    def _generate_doors(self, graph: dict[RoomNode, set[RoomNode]]) -> None:
+        processed: set[frozenset] = set()
+
+        for room, connections in graph.items():
+            for neighbor in connections:
+                edge = frozenset((room, neighbor))
+                if edge in processed:
+                    continue
+                processed.add(edge)
+
+                direction_a = self._get_direction_between(
+                    room.get_grid_position(), neighbor.get_grid_position()
+                )
+                direction_b = self._get_direction_between(
+                    neighbor.get_grid_position(), room.get_grid_position()
+                )
+
+                self._place_door_pair(room, neighbor, direction_a, direction_b)
+
+    def _place_door_pair(
+        self, room_a: RoomNode, room_b: RoomNode,
+        direction_a: Directions, direction_b: Directions
+    ) -> bool:
+        room_w, room_h = room_a.get_size()
+        max_attempts = 10
+
+        for _ in range(max_attempts):
+            if direction_a in (Directions.EAST, Directions.WEST):
+                shared = random.randint(1, room_h - 2)
+                x_a = room_w - 1 if direction_a == Directions.EAST else 0
+                x_b = room_w - 1 if direction_b == Directions.EAST else 0
+                y_a = y_b = shared
+            else:
+                shared = random.randint(1, room_w - 2)
+                y_a = room_h - 1 if direction_a == Directions.SOUTH else 0
+                y_b = room_h - 1 if direction_b == Directions.SOUTH else 0
+                x_a = x_b = shared
+
+            if room_a.add_door(x_a, y_a) and room_b.add_door(x_b, y_b):
+                return True
+
+        print(f"Could not align doors between {room_a} and {room_b}")
+        return False
+
     def finalize_rooms(self, room_types: dict[RoomNode, RoomType]) -> None:
         """
         Finalize all the rooms that are currently in the loaded map
@@ -512,7 +613,6 @@ class MapGenerator:
         `self.entries`, `self.objective`, `self.decoy_objectives`) for
         inspection.
         """
-        self.current_loaded_map = np.zeros(size)
         min_count, max_count = self._estimate_room_count_range(size)
         room_count = random.randint(min_count, max_count)
 
@@ -526,27 +626,34 @@ class MapGenerator:
         room_types = self._tag_rooms(self.room_graph)
         self.finalize_rooms(room_types)
 
-        room_min_distance = self._get_min_distance_from_entries(self.room_graph)
+        map_width, map_height = self._set_tile_coordinates(self.room_graph)
 
-        if not self._is_full_connected(self.room_graph):
-            print("Graph not fully connected")
+        self.current_loaded_map = np.zeros((map_height, map_width))
 
-        for room_id, connections in self.room_graph.items():
-            print()
-            print(f"Room {room_id} connects to: {connections}")
-            print(
-                f"Room {room_id} is {room_min_distance[room_id]} steps from the nearest entry"
-            )
-            if room_id in self.entries:
-                print(f"Room {room_id} is also an entry point")
+        self._generate_doors(self.room_graph)
+        self._stamp_maps(self.room_graph)
 
-        print()
-        print(f"Current room objective: {self.objective}")
-        print(
-            f"Decoy Objectives: {self.decoy_objectives if self.decoy_objectives else 'None'}"
-        )
-
-        print("Room Types:")
-        pprint(room_types)
-
+        # room_min_distance = self._get_min_distance_from_entries(self.room_graph)
+        #
+        # if not self._is_full_connected(self.room_graph):
+        #     print("Graph not fully connected")
+        #
+        # for room_id, connections in self.room_graph.items():
+        #     print()
+        #     print(f"Room {room_id} connects to: {connections}")
+        #     print(
+        #         f"Room {room_id} is {room_min_distance[room_id]} steps from the nearest entry"
+        #     )
+        #     if room_id in self.entries:
+        #         print(f"Room {room_id} is also an entry point")
+        #
+        # print()
+        # print(f"Current room objective: {self.objective}")
+        # print(
+        #     f"Decoy Objectives: {self.decoy_objectives if self.decoy_objectives else 'None'}"
+        # )
+        #
+        # print("Room Types:")
+        # pprint(room_types)
+        
         return self.current_loaded_map

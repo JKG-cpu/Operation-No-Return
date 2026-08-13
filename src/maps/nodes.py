@@ -32,7 +32,8 @@ class RoomNode:
         self.map = np.zeros((self.height, self.width))
         self.doors: list[tuple[int, int, Directions]] = []
         self.objects: list[GameObject] = []
-        self.grid_position: tuple[int, int] | None = None
+        self.grid_position: tuple[int, int] = (0, 0)
+        self.tile_position: tuple[int, int] = (0, 0)
 
         # Construct Border
         self.create_border()
@@ -182,6 +183,9 @@ class RoomNode:
     def set_grid_position(self, grid_x: int, grid_y: int) -> None:
         self.grid_position = (grid_x, grid_y)
 
+    def set_tile_position(self, tile_x: int, tile_y: int) -> None:
+        self.tile_position = (tile_x, tile_y)
+
     def get_map(self) -> np.ndarray:
         return self.map
 
@@ -191,8 +195,14 @@ class RoomNode:
     def get_type(self) -> RoomType:
         return self.room_type
 
-    def get_grid_position(self) -> tuple[int, int] | None:
+    def get_grid_position(self) -> tuple[int, int]:
         return self.grid_position
+
+    def get_tile_position(self) -> tuple[int, int]:
+        return self.tile_position
+
+    def get_size(self) -> tuple[int, int]:
+        return (self.width, self.height)
 
     def __repr__(self) -> str:
         return (
